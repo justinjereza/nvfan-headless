@@ -1,0 +1,33 @@
+#!/bin/sh
+
+DIR="/opt/nvfan-headless";
+SMI="/usr/bin/nvidia-smi";
+SET="/usr/bin/nvidia-settings";
+
+case "$1" in
+    stop)
+        ${SMI} --persistence-mode=0;
+        ${SMI};
+        exit;
+        ;;
+    *)
+        FAN_SPEED="${1:-75}";
+
+        # Keep nVidia driver loaded even when there are no active clients such as X11 or nvidia-smi.
+        ${SMI} --persistence-mode=1;
+
+        # Command to set fan speed of the primary GPU.
+        SET_FAN="${SET} --assign=[gpu:0]/GPUFanControlState=1 --assign=[fan:0]/GPUCurrentFanSpeed=${FAN_SPEED}";
+
+        # Get the Bus IDs of the GPUs.
+        BUS_IDS=$(${SMI} --format=csv --query-gpu=pci.bus_id | sed "1d; s,^[[:digit:]]\{4\},PCI,; s,\.,:,;");
+
+        # Set the fan speed for each Bus ID.
+        for i in ${BUS_IDS}; do
+            CFG=$(mktemp);
+            sed "s,@NVFAN_DIR@,${DIR},; s,@NVFAN_BUS_ID@,${i},;" ${DIR}/xorg.conf > ${CFG};
+            xinit ${SET_FAN} -- :0 -once -config ${CFG};
+            rm ${CFG};
+        done
+        ;;
+esac
